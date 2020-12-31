@@ -1,0 +1,45 @@
+pipeline {
+    environment {
+        imagerepo = "shakilife/mediawiki"
+        buildnumber = "$currentBuild.number"
+        
+    }
+        stages {
+            stage('git clone') {
+                steps {
+                checkout([$class: 'GitSCM',
+        	    branches: [[name: '$tag']],
+        	    doGenerateSubmoduleConfigurations: false, 
+                  userRemoteConfigs: [[url: 'https://github.com/shakilife/mw-setup.git']],
+                  ])
+                }       
+            }
+            stage('Docker build') {
+                steps {
+                    sh '''
+                    version_number=$(date "+%Y%m%d%H%M")+$tag+$buildnumber
+                    cd mw-setup
+                    echo $version_number > version.txt 
+                    sudo docker rmi -f "$imagerepo:$tag-$buildnumber"
+                    sudo docker build -t "$imagerepo:$tag-$buildnumber" .
+                    sudo docker push "$imagerepo:$tag-$buildnumber"
+                    '''
+                }
+            }
+            stage ('deploy helm ') {
+                steps {
+                    sh '''
+		    kubectl apply -f sect.yaml
+		    helm install mediawiki helm/mediawiki-0.0.1.tgz  --set image.repository=$imagerepo:$tag-$buildnumber
+'''
+                }
+            }
+            
+            stage('cleanup') {
+                steps {
+                    cleanWs()
+                }
+                
+            }
+        }
+}
